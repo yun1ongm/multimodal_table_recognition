@@ -288,6 +288,9 @@ def main() -> int:
                     continue
         if args.stage in {"dsl", "all"}:
             if not ir_path.is_file() and not args.dry_run:
+                if args.continue_on_errors:
+                    print(f"WARN skip group after missing IR: {group.label}")
+                    continue
                 raise SystemExit(f"TableIR missing before DSL stage: {ir_path}")
             if dsl_path.exists() and not args.force:
                 print(f"DSL cache: {group.label} -> {dsl_path}")
@@ -302,6 +305,9 @@ def main() -> int:
                     continue
         if args.stage in {"answer", "all"}:
             if (not ir_path.is_file() or not dsl_path.is_file()) and not args.dry_run:
+                if args.continue_on_errors:
+                    print(f"WARN skip group after missing IR/DSL: {group.label}")
+                    continue
                 raise SystemExit(f"IR/DSL missing before answer stage: {group.label}")
             if answer_path.exists() and not args.force:
                 print(f"answer cache: {group.label} -> {answer_path}")
