@@ -277,3 +277,27 @@ python3 scripts/validate_submission.py submission.xlsx \
 ```
 
 当前数据运行结果：908 道题全部成功读取，3 个零填充文件名成功归一，24 个被引用 PDF 共渲染 32 页；未发现缺失文件，仅记录 `id=63` 的非法原始题型告警。第一阶段不调用千问 API，下一阶段再接入 `.env` 中的 `QWEN_BASE_URL`、`QWEN_MODEL` 和备用模型配置。
+
+## 9. 第二阶段：Qwen TableIR 构建器
+
+第二阶段已加入：
+
+- `qwen_client.py`：读取 `.env` 中的 Qwen 配置，使用 OpenAI-compatible `/chat/completions` 接口发送图片和提示词；支持备用模型、JSON 提取、CA 证书配置和显式 SSL 开关；
+- `build_table_ir.py`：按文件分组题目提示和相关问题，调用千问视觉模型生成 `table_ir.v1`，并校验行列边界、合并跨度和单元格覆盖冲突；
+- schema 失败会带具体冲突信息自动重试一次；模型原始文本保存在 `.raw.txt`，失败信息保存在 `.error.json`，便于复盘。
+
+先用少量样本验证：
+
+```bash
+python3 scripts/build_table_ir.py \
+  --file 011.jpg --file 078.png --file 090.png --file 093.jpg \
+  --max-tokens 10000
+```
+
+自动选择 011–057、078–093 的被引用单页图片时，可以使用 `--limit` 控制调用数量；正式批处理前建议先 dry-run 检查提示：
+
+```bash
+python3 scripts/build_table_ir.py --limit 3 --dry-run
+```
+
+当前已验证 `011.jpg` 英文/中文课程表、`078.png` Amazon 财报、`090.png` 合并单元格表和 `093.jpg` ASCII 表格，均能生成合法 TableIR。模型输出中的单元格重叠会被拒绝并自动重试，不会直接进入后续问答。
