@@ -168,10 +168,12 @@ def canonical_period(text: str | None) -> str | None:
     year = re.search(r"\b(19\d{2}|20\d{2})\b", value)
     if year:
         return f"year_{year.group(1)}"
-    if any(token in value for token in ("期末", "本年末", "ending balance", "closing balance", "as of")):
-        return "current_end"
     if any(token in value for token in ("期初", "上年末", "beginning balance", "opening balance")):
         return "prior_end"
+    if any(token in value for token in ("上期期末", "上期末", "prior ending", "prior end", "previous ending")):
+        return "prior_end"
+    if any(token in value for token in ("期末", "本年末", "ending balance", "closing balance", "as of")):
+        return "current_end"
     if any(token in value for token in ("本期", "本年度", "current period", "current year")):
         return "current_period"
     if any(token in value for token in ("上期", "上年度", "prior period", "prior year", "previous period")):

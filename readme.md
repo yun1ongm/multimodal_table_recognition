@@ -383,7 +383,8 @@ python3 scripts/run_batch_pipeline.py --stage all --dry-run
 python3 scripts/run_batch_pipeline.py \
   --stage all \
   --batch-size 10 \
-  --max-tokens 7000
+  --max-tokens 16000 \
+  --continue-on-errors
 ```
 
 只处理单个文件进行回归：
@@ -395,3 +396,4 @@ python3 scripts/run_batch_pipeline.py \
 ```
 
 当前全量计划会合并文件名别名，得到 94 个表格组、908 道题；局部运行会自动带 `--allow-blank` 生成草稿，完整运行完成后才会要求所有题目均有答案。
+`--continue-on-errors` 适合首轮覆盖率跑批：单个表格的识别、DSL 或答案错误会写入缓存并继续其他组；最终提交前应移除该选项并复核缺失答案。

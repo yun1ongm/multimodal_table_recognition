@@ -219,6 +219,22 @@ class TableView:
         if isinstance(selector.get("row"), int) and isinstance(selector.get("col"), int):
             cell = self._cell_at.get((selector["row"], selector["col"]))
             if cell is None:
+                row = int(selector["row"])
+                col = int(selector["col"])
+                if 0 <= row < int(self.ir.get("row_count", 0)) and 0 <= col < int(self.ir.get("col_count", 0)):
+                    return [
+                        self.make_ref(
+                            {
+                                "text": "",
+                                "row": row,
+                                "col": col,
+                                "rowspan": 1,
+                                "colspan": 1,
+                                "role": "value",
+                                "virtual": True,
+                            }
+                        )
+                    ]
                 return []
             return [self.make_ref(cell)]
 
@@ -305,6 +321,10 @@ class TableView:
             raise AnswerEngineError("row filter must be an object or string")
         result: list[int] = []
         for row in sorted(self.rows):
+            if where.get("start_row") is not None and row < int(where["start_row"]):
+                continue
+            if where.get("end_row") is not None and row > int(where["end_row"]):
+                continue
             texts = self.row_texts(row)
             joined = " | ".join(texts)
             include = True
@@ -484,6 +504,8 @@ class AnswerEngine:
 
     def _cell_return(self, ref: CellRef, mode: str) -> Any:
         if mode in {"raw", "text", "value"}:
+            if ref.cell.get("virtual") and not ref.text:
+                return ref
             return ref.text
         if mode in {"number", "numeric"}:
             return self._to_decimal(ref)
@@ -633,6 +655,8 @@ class AnswerEngine:
         if isinstance(value, float):
             return Decimal(str(value))
         if isinstance(value, CellRef):
+            if value.cell.get("virtual") and not value.text:
+                return Decimal("0")
             financial = value.cell.get("financial_value")
             if isinstance(financial, dict) and financial.get("raw_value") is not None:
                 try:
@@ -683,8 +707,13 @@ class AnswerEngine:
 
     def _format_json_item(self, value: Any, item_format: str | None) -> Any:
         if isinstance(value, CellRef):
+            if not value.text:
+                return ""
             if item_format == "number":
-                return self._decimal_json(self._to_decimal(value))
+                try:
+                    return self._decimal_json(self._to_decimal(value))
+                except AnswerEngineError:
+                    return ""
             if item_format == "row_label":
                 return value.row_label
             if item_format == "column_label":

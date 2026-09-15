@@ -58,11 +58,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit-groups", type=int)
     parser.add_argument("--batch-size", type=int, default=10)
     parser.add_argument("--dpi", type=int, default=160)
-    parser.add_argument("--max-tokens", type=int, default=7000)
+    parser.add_argument("--max-tokens", type=int, default=16000)
     parser.add_argument("--schema-retries", type=int, default=1)
     parser.add_argument("--model")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--allow-blank", action="store_true")
+    parser.add_argument(
+        "--continue-on-errors",
+        action="store_true",
+        help="Keep other groups running when a group answer stage returns errors",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -116,13 +121,17 @@ def command_text(command: list[str]) -> str:
     return " ".join(shlex.quote(str(item)) for item in command)
 
 
-def run_command(command: list[str], *, dry_run: bool) -> None:
+def run_command(command: list[str], *, dry_run: bool, allow_failure: bool = False) -> bool:
     print("$ " + command_text(command))
     if dry_run:
-        return
+        return True
     completed = subprocess.run(command, check=False)
     if completed.returncode != 0:
+        if allow_failure:
+            print(f"WARN command failed with exit code {completed.returncode}; continuing")
+            return False
         raise SystemExit(f"command failed with exit code {completed.returncode}: {command_text(command)}")
+    return True
 
 
 def build_ir_command(args: argparse.Namespace, group: TableGroup, ir_path: Path) -> list[str]:
@@ -234,7 +243,13 @@ def export_command(args: argparse.Namespace, answer_paths: list[Path]) -> list[s
     ]
     for path in answer_paths:
         command.extend(["--answers", str(path)])
-    if args.allow_blank or args.limit_groups is not None or args.requested_files or args.question_ids:
+    if (
+        args.allow_blank
+        or args.continue_on_errors
+        or args.limit_groups is not None
+        or args.requested_files
+        or args.question_ids
+    ):
         command.append("--allow-blank")
     return command
 
@@ -261,22 +276,41 @@ def main() -> int:
             if ir_path.exists() and not args.force:
                 print(f"IR cache: {group.label} -> {ir_path}")
             else:
-                run_command(build_ir_command(args, group, ir_path), dry_run=args.dry_run)
+                ok = run_command(
+                    build_ir_command(args, group, ir_path),
+                    dry_run=args.dry_run,
+                    allow_failure=args.continue_on_errors,
+                )
+                if not ok and not args.dry_run:
+                    print(f"WARN skip group after IR failure: {group.label}")
+                    continue
         if args.stage in {"dsl", "all"}:
             if not ir_path.is_file() and not args.dry_run:
                 raise SystemExit(f"TableIR missing before DSL stage: {ir_path}")
             if dsl_path.exists() and not args.force:
                 print(f"DSL cache: {group.label} -> {dsl_path}")
             else:
-                run_command(compile_command(args, group, ir_path, dsl_path), dry_run=args.dry_run)
+                ok = run_command(
+                    compile_command(args, group, ir_path, dsl_path),
+                    dry_run=args.dry_run,
+                    allow_failure=args.continue_on_errors,
+                )
+                if not ok and not args.dry_run:
+                    print(f"WARN skip group after DSL failure: {group.label}")
+                    continue
         if args.stage in {"answer", "all"}:
             if (not ir_path.is_file() or not dsl_path.is_file()) and not args.dry_run:
                 raise SystemExit(f"IR/DSL missing before answer stage: {group.label}")
             if answer_path.exists() and not args.force:
                 print(f"answer cache: {group.label} -> {answer_path}")
             else:
-                run_command(answer_command(args, ir_path, dsl_path, answer_path), dry_run=args.dry_run)
-        answer_paths.append(answer_path)
+                run_command(
+                    answer_command(args, ir_path, dsl_path, answer_path),
+                    dry_run=args.dry_run,
+                    allow_failure=args.continue_on_errors,
+                )
+        if answer_path.is_file() or args.dry_run:
+            answer_paths.append(answer_path)
 
     if args.stage in {"export", "all"}:
         if not args.dry_run and any(not path.is_file() for path in answer_paths):
