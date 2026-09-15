@@ -704,6 +704,9 @@ class AnswerEngine:
         if isinstance(value, CellRef):
             if value.cell.get("virtual") and not value.text:
                 return Decimal("0")
+            time_value = self._time_to_minutes(value.text)
+            if time_value is not None:
+                return time_value
             financial = value.cell.get("financial_value")
             if isinstance(financial, dict) and financial.get("raw_value") is not None:
                 try:
@@ -719,10 +722,30 @@ class AnswerEngine:
                 return Decimal(parsed.raw_value)
             raise AnswerEngineError(f"cell is not numeric: {value.text!r}")
         if isinstance(value, str):
+            time_value = self._time_to_minutes(value)
+            if time_value is not None:
+                return time_value
             parsed = parse_financial_value(value, unit_context=None)
             if parsed.raw_value is not None:
                 return Decimal(parsed.raw_value)
         raise AnswerEngineError(f"value is not numeric: {value!r}")
+
+    @staticmethod
+    def _time_to_minutes(value: str) -> Decimal | None:
+        """Convert a clock time or a two-endpoint time range to minutes."""
+
+        matches = re.findall(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", str(value))
+        if not matches:
+            return None
+        minutes = [int(hour) * 60 + int(minute) for hour, minute in matches]
+        if any(minute >= 60 for minute in [int(item[1]) for item in matches]):
+            return None
+        if len(minutes) >= 2:
+            duration = minutes[-1] - minutes[0]
+            if duration < 0:
+                duration += 24 * 60
+            return Decimal(duration)
+        return Decimal(minutes[0])
 
     @staticmethod
     def _as_text(value: Any) -> str:
