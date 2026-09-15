@@ -362,3 +362,36 @@ python3 scripts/export_submission.py \
 ```
 
 正式提交时去掉 `--allow-blank`；脚本会拒绝缺少题目答案、重复冲突答案或格式校验失败的结果。
+
+## 12. 第五阶段：批量断点续跑
+
+`compile_questions_batch.py` 和 `run_batch_pipeline.py` 将同一文件/表名下的题目分批编译，避免每道题重复发送完整 TableIR。批处理器按以下缓存链路运行：
+
+```text
+文件/表名分组 → 图片或 PDF TableIR → 批量 question_dsl → 本地答案 → submission.xlsx
+```
+
+先查看全量计划：
+
+```bash
+python3 scripts/run_batch_pipeline.py --stage all --dry-run
+```
+
+正式运行支持断点续跑；已存在的 IR、DSL 和答案缓存默认跳过：
+
+```bash
+python3 scripts/run_batch_pipeline.py \
+  --stage all \
+  --batch-size 10 \
+  --max-tokens 7000
+```
+
+只处理单个文件进行回归：
+
+```bash
+python3 scripts/run_batch_pipeline.py \
+  --stage all \
+  --file 078.png
+```
+
+当前全量计划会合并文件名别名，得到 94 个表格组、908 道题；局部运行会自动带 `--allow-blank` 生成草稿，完整运行完成后才会要求所有题目均有答案。

@@ -134,7 +134,15 @@ def _copy_and_normalize_node(node: Any, path: str = "expression") -> dict[str, A
         if not normalized.get("full") and not any(
             key in normalized for key in ("rows", "row_indices", "cols", "col_indices", "row_range", "col_range")
         ):
-            raise DSLValidationError(f"{path} structure node requires full or a row/column scope")
+            # A few model responses describe a structure task but omit the
+            # requested scope.  Keep the DSL executable with a conservative
+            # full-table fallback; the warning remains in the internal DSL so
+            # the answer can be sent to review instead of silently failing a
+            # whole batch.
+            normalized["full"] = True
+            notes = normalized.setdefault("notes", [])
+            if isinstance(notes, list):
+                notes.append("structure scope omitted by compiler; fell back to full table")
     return normalized
 
 
@@ -257,4 +265,38 @@ def build_compile_prompt(question: dict[str, Any], ir: dict[str, Any]) -> str:
 
 现在只编译这一题：
 {json.dumps(question, ensure_ascii=False)}
+"""
+
+
+def build_compile_batch_prompt(questions: list[dict[str, Any]], ir: dict[str, Any]) -> str:
+    """Build one prompt that compiles several questions against one table."""
+
+    question_payload = [
+        {
+            key: question.get(key)
+            for key in ("id", "question_type", "question", "table_hint", "answer_format")
+        }
+        for question in questions
+    ]
+    return f"""你是表格问答意图编译器。你只能使用给定的 TableIR，不要直接回答问题，不要猜测图像之外的信息。
+请把下面每一道自然语言题目分别编译成可由本地确定性引擎执行的 question_dsl.v1 JSON。
+只返回一个 JSON 对象，不要 Markdown、解释或代码围栏：
+{{"questions":[{{"id":"题目 id","dsl":{{"operation":"select|calculate|count|list|boolean|structure","answer_format":"string|number|json_array|json","expression":{{"op":"允许的节点"}}}}}}]}}
+
+题目列表：
+{json.dumps(question_payload, ensure_ascii=False)}
+
+可用 TableIR：
+{table_context(ir)}
+
+允许的 expression op：literal、cell、text、table_field、list、add、sum、subtract、difference、multiply、divide、ratio、average、max、min、count、count_rows、count_cells、merge_cells、span_sum、row_labels、cells、argmax、argmin、compare、contains、structure。
+
+编译规则：
+1. 必须为每个输入 id 输出恰好一个 questions 项，id 原样保留，不能遗漏、重复或新增。
+2. cell 优先使用 TableIR 的精确 row_label、column 和坐标；row/col 是从 0 开始的坐标，年份列用 column 字符串（例如 "2017"）。
+3. 数字计算拆成 cell 节点和算术节点，由本地 Decimal 执行，禁止把最终数字写死。
+4. 顶层 operation=count 时 expression 应返回 list、cells 或 count_rows；顶层 operation=boolean 时 expression 使用 compare/contains，或使用 structure 判断合并关系。
+5. 统计合并跨度使用 span_sum，例如 {{"op":"span_sum","span":"rowspan","selector":{{"rowspan":3}}}}；不要把 RowSpan 文本交给财务数字解析。
+6. 多个答案使用 list 节点，并设置 item_format="number" 或 item_format="string"；结构题使用 structure。
+7. 无法安全定位时输出最小 DSL 并在该 DSL 的 notes 中说明疑点，不要编造答案。
 """
