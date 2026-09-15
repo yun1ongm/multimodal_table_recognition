@@ -223,6 +223,41 @@ class QwenClient:
             "raw": payload,
         }
 
+    def chat_text(
+        self,
+        *,
+        prompt: str,
+        system_prompt: str,
+        model: str | None = None,
+        max_tokens: int = 5000,
+        temperature: float = 0.0,
+    ) -> dict[str, Any]:
+        """Send a text-only request through the same Qwen endpoint.
+
+        TableIR already contains the visual evidence needed by the question
+        compiler.  Keeping this request text-only avoids uploading the same
+        page image once for every question in a table.
+        """
+
+        selected_model = model or self.config.model
+        body: dict[str, Any] = {
+            "model": selected_model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": False,
+        }
+        payload = self._request(body)
+        return {
+            "model": selected_model,
+            "text": extract_message_text(payload),
+            "usage": payload.get("usage"),
+            "raw": payload,
+        }
+
     def chat_json(self, required_keys: set[str] | None = None, **kwargs: Any) -> dict[str, Any]:
         """Call the primary model and optionally retry once with its fallback."""
 
@@ -245,4 +280,28 @@ class QwenClient:
                 raise RuntimeError(
                     f"Primary Qwen attempt failed: {primary_error}; "
                     f"fallback attempt failed: {fallback_error}"
+                ) from fallback_error
+
+    def chat_text_json(self, required_keys: set[str] | None = None, **kwargs: Any) -> dict[str, Any]:
+        """Text-only counterpart of :meth:`chat_json`."""
+
+        try:
+            response = self.chat_text(**kwargs)
+            response["json"] = extract_json(response["text"], required_keys=required_keys)
+            return response
+        except Exception as primary_error:
+            fallback = self.config.fallback_model
+            if not fallback or fallback == kwargs.get("model") or fallback == self.config.model:
+                raise
+            fallback_kwargs = dict(kwargs)
+            fallback_kwargs["model"] = fallback
+            try:
+                response = self.chat_text(**fallback_kwargs)
+                response["json"] = extract_json(response["text"], required_keys=required_keys)
+                response["fallback_reason"] = str(primary_error)
+                return response
+            except Exception as fallback_error:
+                raise RuntimeError(
+                    f"Primary Qwen text attempt failed: {primary_error}; "
+                    f"fallback text attempt failed: {fallback_error}"
                 ) from fallback_error

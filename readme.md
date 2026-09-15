@@ -321,3 +321,44 @@ python3 scripts/build_financial_pages.py \
 ```
 
 该流程已实际验证 `007.pdf` 的两页固定资产表：拼接为 29 行、7 列、137 个单元格，去除第 2 页重复表头，并为数值单元格附加 `raw_value`、`scaled_value`、`period` 和负数标记。财务归一化只增加内部元数据，不覆盖原始文本，后续答案格式化仍可按题目要求选择原始显示值或统一单位值。
+
+## 11. 第四阶段：题目 DSL 与确定性答案引擎
+
+第四阶段将自然语言题目拆成“千问编译意图、本地执行答案”两步：
+
+- `question_dsl.py`：定义并校验 `question_dsl.v1`，支持 `cell`、`table_field`、算术、列表、计数、比较、结构和合并跨度节点；
+- `compile_questions.py`：把题目和 TableIR 发送给千问文本接口，只生成可执行 DSL，不直接生成答案；
+- `answer_engine.py`：按行标题、列标题、坐标和表头路径定位单元格，使用 `Decimal` 完成求和、差值、比例、平均、极值和计数；
+- `answer_questions.py`：执行一份 DSL 缓存，保留每题来源单元格、来源页和 DSL，便于错误复核；
+- `export_submission.py`：将多个 `answers.v1` 合并为严格的 `id/answer` 两列 `submission.xlsx`，并自动调用提交校验器。
+
+单表示例：
+
+```bash
+python3 scripts/compile_questions.py \
+  --ir artifacts/table_ir/078.json \
+  --id 749 --id 750 --id 756 --id 757 --id 758 \
+  --output artifacts/question_dsl/078.sample.json
+
+python3 scripts/answer_questions.py \
+  --ir artifacts/table_ir/078.json \
+  --dsl artifacts/question_dsl/078.sample.json \
+  --output artifacts/answers/078.sample.json
+```
+
+数值答案不会由模型直接计算：例如 `2017 Total net sales - 2017 Total operating expenses` 会编译为两个 `cell` 加一个 `subtract`，本地结果为 `4106`。结构题直接从 TableIR 恢复 `row_count/col_count/cells`；涉及 `RowSpan/ColumnSpan` 的题使用内部 `rowspan/colspan` 元数据，不把跨度文本误当财务数字。
+
+已使用千问真实接口验证：`078.png` 5 道题、`011.jpg` 4 道题均成功完成“编译 → 本地执行”；`090.png` 的整表结构、跨度求和、跨行跨列判断和 ColumnSpan 计数也已通过本地回放。API 生成的 DSL、答案和原始响应均写入 `artifacts/`，该目录被 `.gitignore` 忽略。
+
+导出草稿提交文件时：
+
+```bash
+python3 scripts/export_submission.py \
+  --answers artifacts/answers/one-table.json \
+  --answers artifacts/answers/another-table.json \
+  --allow-blank \
+  --output submission.xlsx \
+  --report reports/submission_export.json
+```
+
+正式提交时去掉 `--allow-blank`；脚本会拒绝缺少题目答案、重复冲突答案或格式校验失败的结果。
