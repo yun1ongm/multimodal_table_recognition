@@ -212,6 +212,8 @@ def compile_command(args: argparse.Namespace, group: TableGroup, ir_path: Path, 
         command.extend(["--id", question_id])
     if args.model:
         command.extend(["--model", args.model])
+    if args.continue_on_errors:
+        command.append("--continue-on-errors")
     return command
 
 

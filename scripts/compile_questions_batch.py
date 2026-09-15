@@ -10,7 +10,12 @@ from typing import Any
 
 from dataset_utils import load_test_questions, utc_now, write_json
 from qwen_client import QwenClient, QwenConfig
-from question_dsl import DSLValidationError, build_compile_batch_prompt, normalize_dsl
+from question_dsl import (
+    DSLValidationError,
+    build_compile_batch_prompt,
+    build_compile_prompt,
+    normalize_dsl,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -24,6 +29,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model")
     parser.add_argument("--max-tokens", type=int, default=7000)
     parser.add_argument("--schema-retries", type=int, default=1)
+    parser.add_argument(
+        "--continue-on-errors",
+        action="store_true",
+        help="Fall back to one-question requests when a batch cannot be compiled",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -122,6 +132,53 @@ def compile_batch(
     raise RuntimeError(last_error or "batch DSL validation failed")
 
 
+def compile_single(
+    client: QwenClient,
+    question: dict[str, Any],
+    ir: dict[str, Any],
+    *,
+    model: str | None,
+    max_tokens: int,
+    schema_retries: int,
+) -> dict[str, Any]:
+    """Compile one question after a batch request fails validation."""
+
+    prompt = build_compile_prompt(question, ir)
+    current_prompt = prompt
+    last_error = ""
+    for attempt in range(schema_retries + 1):
+        try:
+            response = client.chat_text_json(
+                required_keys={"operation", "expression"},
+                prompt=current_prompt,
+                system_prompt="你是严格的 JSON 题目意图编译器。只返回可执行 DSL JSON。",
+                model=model,
+                max_tokens=max_tokens,
+            )
+            dsl = normalize_dsl(response["json"], question)
+            return {
+                "id": question["id"],
+                "question": question["question"],
+                "question_type": question["question_type"],
+                "answer_format": question["answer_format"],
+                "dsl": dsl,
+                "model": response["model"],
+                "usage": response.get("usage"),
+                "raw": response["text"],
+            }
+        except (DSLValidationError, RuntimeError, ValueError) as exc:
+            last_error = str(exc)
+            if attempt == schema_retries:
+                break
+            current_prompt = (
+                prompt
+                + "\n\n上一次输出无法执行，错误如下："
+                + last_error
+                + "\n请重新输出完整 JSON；expression 必须是允许的节点，禁止直接填写答案。"
+            )
+    raise RuntimeError(last_error or "single-question DSL compilation failed")
+
+
 def main() -> int:
     args = parse_args()
     if args.batch_size <= 0 or args.max_tokens <= 0 or args.schema_retries < 0:
@@ -141,18 +198,49 @@ def main() -> int:
 
     client = QwenClient(QwenConfig.from_env(args.env_file.resolve()))
     records: list[dict[str, Any]] = []
+    fallback_errors = 0
     for index, chunk in enumerate(chunks, start=1):
         print(f"batch {index}/{len(chunks)} ids={[question['id'] for question in chunk]}")
-        records.extend(
-            compile_batch(
-                client,
-                chunk,
-                ir,
-                model=args.model,
-                max_tokens=args.max_tokens,
-                schema_retries=args.schema_retries,
+        try:
+            records.extend(
+                compile_batch(
+                    client,
+                    chunk,
+                    ir,
+                    model=args.model,
+                    max_tokens=args.max_tokens,
+                    schema_retries=args.schema_retries,
+                )
             )
-        )
+        except Exception as exc:
+            if not args.continue_on_errors:
+                raise
+            print(f"WARN batch failed; retrying one question at a time: {exc}")
+            for question in chunk:
+                try:
+                    records.append(
+                        compile_single(
+                            client,
+                            question,
+                            ir,
+                            model=args.model,
+                            max_tokens=args.max_tokens,
+                            schema_retries=args.schema_retries,
+                        )
+                    )
+                    print(f"question {question['id']}: single fallback compiled")
+                except Exception as single_error:
+                    fallback_errors += 1
+                    records.append(
+                        {
+                            "id": question["id"],
+                            "question": question["question"],
+                            "question_type": question["question_type"],
+                            "answer_format": question["answer_format"],
+                            "error": str(single_error),
+                        }
+                    )
+                    print(f"question {question['id']}: ERROR {single_error}")
 
     output_path = (args.output or default_output(ir)).resolve()
     result = {
@@ -163,7 +251,10 @@ def main() -> int:
         "questions": records,
     }
     write_json(output_path, result)
-    print(f"compiled={len(records)} batches={len(chunks)} -> {output_path}")
+    print(
+        f"compiled={len(records) - fallback_errors} records={len(records)} "
+        f"fallback_errors={fallback_errors} batches={len(chunks)} -> {output_path}"
+    )
     return 0
 
 

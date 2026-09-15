@@ -372,11 +372,6 @@ class TableView:
             cols = set(range(col, col + int(cell.get("colspan", 1))))
             if not (rows & selected_rows and cols & selected_cols):
                 continue
-            if not full and not (rows <= selected_rows and cols <= selected_cols):
-                # Do not emit a partially clipped merge as if it were a
-                # complete cell.  The caller can request full structure when
-                # exact merge boundaries matter.
-                continue
             output_cells.append(
                 {
                     "text": str(cell.get("text", "")),
@@ -416,7 +411,14 @@ class AnswerEngine:
     def answer(self, question: dict[str, Any], dsl: dict[str, Any]) -> dict[str, Any]:
         normalized = normalize_dsl(dsl, question)
         self.sources = []
-        value = self.evaluate(normalized["expression"])
+        expression = normalized["expression"]
+        if normalized["operation"] == "structure" and expression.get("op") == "cells":
+            # Some model outputs use `cells` as the structure selector.  It
+            # carries the same row/column scope, so normalize it here rather
+            # than serializing a list of CellRef objects as JSON.
+            value = self.view.structure(expression)
+        else:
+            value = self.evaluate(expression)
         value = self._apply_top_operation(normalized["operation"], value)
         answer = self.format_answer(value, normalized["answer_format"], normalized)
         return {
@@ -467,6 +469,37 @@ class AnswerEngine:
         if operation in {"list", "cells"}:
             if operation == "cells" and node.get("selector") is not None:
                 refs = self.view.resolve_cells(node["selector"])
+                self.sources.extend(ref.as_source() for ref in refs)
+                return refs
+            if operation == "cells" and any(
+                key in node for key in ("rows", "row_indices", "cols", "col_indices")
+            ):
+                row_scope = node.get("rows", node.get("row_indices"))
+                col_scope = node.get("cols", node.get("col_indices"))
+                if row_scope is None and isinstance(node.get("row"), int):
+                    row_scope = [node["row"]]
+                if col_scope is None and isinstance(node.get("col"), int):
+                    col_scope = [node["col"]]
+                rows = (
+                    self.view._as_index_set(row_scope)
+                    if row_scope is not None
+                    else set(range(int(self.view.ir.get("row_count", 0))))
+                )
+                cols = (
+                    self.view._as_index_set(col_scope)
+                    if col_scope is not None
+                    else set(range(int(self.view.ir.get("col_count", 0))))
+                )
+                refs: list[CellRef] = []
+                seen: set[int] = set()
+                for row in sorted(rows):
+                    for col in sorted(cols):
+                        for ref in self.view.resolve_cells({"row": row, "col": col}):
+                            marker = id(ref.cell)
+                            if marker in seen:
+                                continue
+                            seen.add(marker)
+                            refs.append(ref)
                 self.sources.extend(ref.as_source() for ref in refs)
                 return refs
             items = node.get("items", node.get("values", []))
@@ -612,12 +645,17 @@ class AnswerEngine:
         raise AnswerEngineError("count requires items, values or where")
 
     def _arg_extreme(self, operation: str, node: dict[str, Any]) -> Any:
-        items = node.get("items", node.get("operands"))
+        items = node.get("items", node.get("operands", node.get("values")))
         if not isinstance(items, list) or not items:
             raise AnswerEngineError(f"{operation} requires a non-empty items array")
         evaluated = [self.evaluate(item) for item in items]
         pairs = [(self._to_decimal(value), value) for value in evaluated]
-        chosen = (max if operation == "argmax" else min)(pairs, key=lambda pair: pair[0])[1]
+        chosen_index, (_, chosen) = (max if operation == "argmax" else min)(
+            enumerate(pairs), key=lambda pair: pair[1][0]
+        )
+        labels = node.get("labels")
+        if isinstance(labels, list) and len(labels) == len(items):
+            return self.evaluate(labels[chosen_index])
         if node.get("return") in {"row", "row_label"}:
             if isinstance(chosen, CellRef):
                 return chosen.row_label
