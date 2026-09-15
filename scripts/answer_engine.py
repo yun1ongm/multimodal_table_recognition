@@ -235,6 +235,15 @@ class TableView:
                             }
                         )
                     ]
+                # Some sparse OCR layouts contain one logical cell in a row,
+                # while the model's coordinate estimate follows the visual
+                # column position and lands outside the compact IR grid.  A
+                # unique row cell is a safe recovery; ambiguous rows must
+                # still fail instead of guessing.
+                if 0 <= row < int(self.ir.get("row_count", 0)):
+                    row_cells = self.rows.get(row, [])
+                    if len(row_cells) == 1:
+                        return [self.make_ref(row_cells[0])]
                 return []
             return [self.make_ref(cell)]
 
