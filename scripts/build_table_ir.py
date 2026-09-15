@@ -97,7 +97,7 @@ def normalize_ir(candidate: Any, source_name: str) -> dict[str, Any]:
             "rowspan": rowspan,
             "colspan": colspan,
         }
-        for optional in ("role", "header_path", "bbox", "fill_color", "confidence"):
+        for optional in ("role", "header_path", "bbox", "fill_color", "confidence", "source_page"):
             if optional in original:
                 cell[optional] = original[optional]
         cells.append(cell)

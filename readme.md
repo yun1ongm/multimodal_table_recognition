@@ -301,3 +301,23 @@ python3 scripts/build_table_ir.py --limit 3 --dry-run
 ```
 
 当前已验证 `011.jpg` 英文/中文课程表、`078.png` Amazon 财报、`090.png` 合并单元格表和 `093.jpg` ASCII 表格，均能生成合法 TableIR。模型输出中的单元格重叠会被拒绝并自动重试，不会直接进入后续问答。
+
+## 10. 第三阶段：财务字段归一化与跨页拼接
+
+第三阶段已加入：
+
+- `financial_utils.py`：识别 `in millions`、`in thousands`、亿元/百万元等单位，解析逗号、货币符号、括号负数、破折号空值、百分比和每股数据例外；
+- 期间归一化：将 `期末余额/期初余额`、本期/上期和英文年份映射为稳定 period key；
+- `stitch_table_ir.py`：拼接页级 TableIR，检测并移除续页重复表头，保留 `source_page`；
+- `build_financial_pages.py`：对 PDF 每页调用千问识别目标财务表，再生成拼接后的财务 TableIR。
+
+示例：
+
+```bash
+python3 scripts/build_financial_pages.py \
+  --pdf 007.pdf \
+  --hint '固定资产情况表' \
+  --max-tokens 12000
+```
+
+该流程已实际验证 `007.pdf` 的两页固定资产表：拼接为 29 行、7 列、137 个单元格，去除第 2 页重复表头，并为数值单元格附加 `raw_value`、`scaled_value`、`period` 和负数标记。财务归一化只增加内部元数据，不覆盖原始文本，后续答案格式化仍可按题目要求选择原始显示值或统一单位值。
