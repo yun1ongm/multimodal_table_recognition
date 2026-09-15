@@ -196,8 +196,29 @@ def main() -> int:
             print(build_compile_batch_prompt(chunk, ir))
         return 0
 
+    output_path = (args.output or default_output(ir)).resolve()
+    partial_path = Path(str(output_path) + ".partial")
+    completed_by_id: dict[str, dict[str, Any]] = {}
+    if partial_path.is_file():
+        try:
+            partial = json.loads(partial_path.read_text(encoding="utf-8"))
+            for item in partial.get("questions", []):
+                if isinstance(item, dict) and item.get("id") and "dsl" in item:
+                    completed_by_id[str(item["id"])] = item
+            if completed_by_id:
+                print(f"resume partial cache: {len(completed_by_id)} questions from {partial_path}")
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"WARN ignoring invalid partial cache {partial_path}: {exc}")
+
+    pending_questions = [
+        question for question in questions if question["id"] not in completed_by_id
+    ]
+    chunks = [
+        pending_questions[index : index + args.batch_size]
+        for index in range(0, len(pending_questions), args.batch_size)
+    ]
     client = QwenClient(QwenConfig.from_env(args.env_file.resolve()))
-    records: list[dict[str, Any]] = []
+    records: list[dict[str, Any]] = list(completed_by_id.values())
     fallback_errors = 0
     for index, chunk in enumerate(chunks, start=1):
         print(f"batch {index}/{len(chunks)} ids={[question['id'] for question in chunk]}")
@@ -242,17 +263,37 @@ def main() -> int:
                     )
                     print(f"question {question['id']}: ERROR {single_error}")
 
-    output_path = (args.output or default_output(ir)).resolve()
+        write_json(
+            partial_path,
+            {
+                "schema_version": "question_dsl.v1",
+                "source_ir": str(args.ir),
+                "source_file": ir.get("source_file"),
+                "generated_at": utc_now(),
+                "complete": False,
+                "questions": records,
+            },
+        )
+
+    records_by_id = {str(record.get("id")): record for record in records}
+    ordered_records = [
+        records_by_id[question["id"]]
+        for question in questions
+        if question["id"] in records_by_id
+    ]
     result = {
         "schema_version": "question_dsl.v1",
         "source_ir": str(args.ir),
         "source_file": ir.get("source_file"),
         "generated_at": utc_now(),
-        "questions": records,
+        "complete": True,
+        "questions": ordered_records,
     }
     write_json(output_path, result)
+    if partial_path.exists():
+        partial_path.unlink()
     print(
-        f"compiled={len(records) - fallback_errors} records={len(records)} "
+        f"compiled={len(ordered_records) - fallback_errors} records={len(ordered_records)} "
         f"fallback_errors={fallback_errors} batches={len(chunks)} -> {output_path}"
     )
     return 0
