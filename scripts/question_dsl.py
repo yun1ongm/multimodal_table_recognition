@@ -183,8 +183,17 @@ def normalize_dsl(candidate: Any, question: dict[str, Any] | None = None) -> dic
     if question:
         normalized.setdefault("question_id", question.get("id", ""))
         normalized.setdefault("question_type", question.get("question_type", "extract"))
-    if not isinstance(normalized.get("notes", []), list):
+    notes = normalized.get("notes", [])
+    if notes is None:
+        notes = []
+    elif isinstance(notes, str):
+        # Notes are non-executable metadata.  Qwen sometimes emits one
+        # explanation string instead of the documented array; preserve it
+        # without rejecting an otherwise executable DSL.
+        notes = [notes]
+    elif not isinstance(notes, list):
         raise DSLValidationError("notes must be an array")
+    normalized["notes"] = notes
     return normalized
 
 
