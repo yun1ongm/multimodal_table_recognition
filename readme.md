@@ -27,7 +27,7 @@
 | `files/` 实际文件数 | 92 |
 | `table_hint` 非空题目 | 665 |
 | 不同的非空表名提示 | 69 |
-| 本地已有答案 | 0 |
+| 本地已有答案 | 初始审计时为 0（后续由批处理流水线生成） |
 
 被引用文件按扩展名统计为：33 个 JPG、31 个 PNG、25 个 PDF、1 个 WEBP。实际目录中另有未被清单引用的 `004.pdf`、`009.pdf`、`094.jpg`。
 
@@ -155,7 +155,7 @@
 
 ### 4.4 千问多模态调用策略
 
-使用阿里云百炼/PAI 上可用的千问视觉模型完成页面理解和表格候选结构识别。建议采用三轮提示，而不是一次让模型直接给最终答案：
+使用阿里云百炼/PAI 上可用的千问视觉模型完成页面理解和表格候选结构识别。本次批处理配置为 `qwen3.8-flash` 主模型、`qwen3.8-max-0902` fallback；建议采用三轮提示，而不是一次让模型直接给最终答案：
 
 1. **定位轮**：只返回目标表所在页、表格边界、表题和候选表头；
 2. **结构轮**：要求严格输出 TableIR JSON，禁止 Markdown，要求每个真实单元格只出现一次；
@@ -282,7 +282,7 @@ python3 scripts/validate_submission.py submission.xlsx \
 
 第二阶段已加入：
 
-- `qwen_client.py`：读取 `.env` 中的 Qwen 配置，使用 OpenAI-compatible `/chat/completions` 接口发送图片和提示词；支持备用模型、JSON 提取、CA 证书配置和显式 SSL 开关；
+- `qwen_client.py`：读取 `.env` 中的 Qwen 配置，使用 OpenAI-compatible `/chat/completions` 接口发送图片和提示词；支持备用模型、JSON 提取、CA 证书配置、显式 SSL 开关和 `QWEN_TIMEOUT_SECONDS` 请求超时；
 - `build_table_ir.py`：按文件分组题目提示和相关问题，调用千问视觉模型生成 `table_ir.v1`，并校验行列边界、合并跨度和单元格覆盖冲突；
 - schema 失败会带具体冲突信息自动重试一次；模型原始文本保存在 `.raw.txt`，失败信息保存在 `.error.json`，便于复盘。
 
@@ -385,6 +385,15 @@ python3 scripts/run_batch_pipeline.py \
   --batch-size 10 \
   --max-tokens 16000 \
   --continue-on-errors
+```
+
+如需显式指定本次使用的模型和请求超时，可在命令前设置环境变量（不要把 API key 写入脚本或提交记录）：
+
+```bash
+QWEN_MODEL=qwen3.8-flash \
+QWEN_MODEL_FALLBACK=qwen3.8-max-0902 \
+QWEN_TIMEOUT_SECONDS=75 \
+python3 scripts/run_batch_pipeline.py --stage all --continue-on-errors
 ```
 
 只处理单个文件进行回归：
