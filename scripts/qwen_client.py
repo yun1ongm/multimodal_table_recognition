@@ -51,6 +51,13 @@ class QwenConfig:
         base_url = os.getenv("QWEN_BASE_URL") or values.get("QWEN_BASE_URL", "")
         model = os.getenv("QWEN_MODEL") or values.get("QWEN_MODEL", "")
         fallback = os.getenv("QWEN_MODEL_FALLBACK") or values.get("QWEN_MODEL_FALLBACK") or None
+        timeout_value = os.getenv("QWEN_TIMEOUT_SECONDS") or values.get("QWEN_TIMEOUT_SECONDS", "180")
+        try:
+            timeout_seconds = int(timeout_value)
+        except ValueError as exc:
+            raise ValueError("QWEN_TIMEOUT_SECONDS must be an integer") from exc
+        if timeout_seconds <= 0:
+            raise ValueError("QWEN_TIMEOUT_SECONDS must be positive")
         verify_value = os.getenv("QWEN_VERIFY_SSL") or values.get("QWEN_VERIFY_SSL", "true")
         verify_ssl = verify_value.strip().lower() not in {"0", "false", "no", "off"}
         ca_bundle = os.getenv("QWEN_CA_BUNDLE") or values.get("QWEN_CA_BUNDLE") or None
@@ -65,6 +72,7 @@ class QwenConfig:
             base_url=base_url.rstrip("/"),
             model=model,
             fallback_model=fallback,
+            timeout_seconds=timeout_seconds,
             verify_ssl=verify_ssl,
             ca_bundle=ca_bundle,
         )
