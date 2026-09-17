@@ -34,6 +34,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Fall back to one-question requests when a batch cannot be compiled",
     )
+    parser.add_argument(
+        "--merge-existing",
+        action="store_true",
+        help="Merge selected repaired questions into an existing output document",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -198,6 +203,20 @@ def main() -> int:
 
     output_path = (args.output or default_output(ir)).resolve()
     partial_path = Path(str(output_path) + ".partial")
+    existing_questions: list[dict[str, Any]] = []
+    if args.merge_existing and output_path.is_file():
+        try:
+            existing_document = json.loads(output_path.read_text(encoding="utf-8"))
+            existing_items = existing_document.get("questions", [])
+            if isinstance(existing_items, list):
+                existing_questions = [
+                    item for item in existing_items
+                    if isinstance(item, dict) and item.get("id")
+                ]
+            if existing_questions:
+                print(f"merge existing cache: {len(existing_questions)} questions from {output_path}")
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"WARN ignoring invalid existing cache {output_path}: {exc}")
     completed_by_id: dict[str, dict[str, Any]] = {}
     if partial_path.is_file():
         try:
@@ -281,6 +300,20 @@ def main() -> int:
         for question in questions
         if question["id"] in records_by_id
     ]
+    if existing_questions:
+        new_records = ordered_records
+        merged_by_id = {
+            str(item["id"]): item for item in existing_questions
+        }
+        merged_by_id.update({str(item["id"]): item for item in new_records})
+        ordered_records = [
+            merged_by_id[str(item["id"])] for item in existing_questions
+        ]
+        existing_ids = {str(item["id"]) for item in existing_questions}
+        ordered_records.extend(
+            item for item in new_records
+            if str(item["id"]) not in existing_ids
+        )
     result = {
         "schema_version": "question_dsl.v1",
         "source_ir": str(args.ir),

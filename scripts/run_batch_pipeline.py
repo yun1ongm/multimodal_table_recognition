@@ -62,6 +62,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--schema-retries", type=int, default=1)
     parser.add_argument("--model")
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--merge-existing",
+        action="store_true",
+        help="Merge selected repaired DSL records into an existing group cache",
+    )
     parser.add_argument("--allow-blank", action="store_true")
     parser.add_argument(
         "--continue-on-errors",
@@ -214,6 +219,8 @@ def compile_command(args: argparse.Namespace, group: TableGroup, ir_path: Path, 
         command.extend(["--model", args.model])
     if args.continue_on_errors:
         command.append("--continue-on-errors")
+    if args.merge_existing:
+        command.append("--merge-existing")
     return command
 
 
