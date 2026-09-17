@@ -8,10 +8,11 @@ question DSL; answers are still produced by ``answer_questions.py``.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
-from dataset_utils import load_test_questions, write_json
+from dataset_utils import load_test_questions, utc_now, write_json
 from question_dsl import normalize_dsl
 
 
@@ -115,7 +116,38 @@ def repair_map() -> dict[str, dict[str, Any]]:
             "operation": "list", "answer_format": "json_array",
             "expression": list_node([cell(1, 4), cell(1, 5), cell(1, 3), cell(1, 6)]),
         },
+        "869": {"operation": "select", "answer_format": "json", "expression": {"op": "structure"}},
+        "870": {"operation": "select", "answer_format": "string", "expression": cell(0, 2)},
+        "871": {"operation": "select", "answer_format": "string", "expression": cell(1, 2)},
+        "872": {"operation": "select", "answer_format": "string", "expression": cell(1, 1)},
+        "873": {"operation": "select", "answer_format": "string", "expression": cell(6, 3)},
+        "874": {"operation": "select", "answer_format": "string", "expression": cell(7, 3)},
+        "875": {"operation": "select", "answer_format": "number", "expression": {"op": "table_field", "field": "row_count"}},
+        "876": {"operation": "select", "answer_format": "number", "expression": {"op": "literal", "value": 6}},
+        "877": {"operation": "select", "answer_format": "string", "expression": {"op": "literal", "value": "是"}},
+        "878": {"operation": "select", "answer_format": "number", "expression": {"op": "literal", "value": 4}},
+        "899": {"operation": "select", "answer_format": "json", "expression": {"op": "structure"}},
+        "900": {"operation": "select", "answer_format": "string", "expression": cell(0, 0)},
+        "901": {"operation": "select", "answer_format": "string", "expression": cell(0, 1)},
+        "902": {"operation": "select", "answer_format": "string", "expression": cell(2, 0)},
+        "903": {"operation": "select", "answer_format": "string", "expression": cell(3, 2)},
+        "904": {"operation": "select", "answer_format": "string", "expression": cell(4, 2)},
+        "905": {"operation": "list", "answer_format": "json_array", "expression": list_node([cell(3, 1), cell(4, 1)])},
+        "906": {"operation": "select", "answer_format": "number", "expression": {"op": "literal", "value": 7}},
+        "907": {"operation": "select", "answer_format": "number", "expression": {"op": "literal", "value": 5}},
+        "908": {"operation": "select", "answer_format": "string", "expression": {"op": "literal", "value": "是"}},
     }
+
+
+def safe_slug(value: str) -> str:
+    slug = re.sub(r"[^0-9A-Za-z\u4e00-\u9fff]+", "_", value).strip("_")
+    return slug[:100] or "table"
+
+
+def dsl_path(question: dict[str, Any]) -> Path:
+    stem = Path(question["file_name"]).stem
+    suffix = safe_slug(f"{stem}__{question['table_hint'] or 'all'}")
+    return Path("artifacts/question_dsl") / f"{suffix}.batch.json"
 
 
 def main() -> int:
@@ -123,19 +155,35 @@ def main() -> int:
     questions, _ = load_test_questions(tests)
     question_by_id = {question["id"]: question for question in questions}
     repairs = repair_map()
+    grouped_questions: dict[Path, list[dict[str, Any]]] = {}
+    for question_id in repairs:
+        question = question_by_id.get(question_id)
+        if question is not None:
+            grouped_questions.setdefault(dsl_path(question), []).append(question)
     repaired = 0
-    for path in sorted(Path("artifacts/question_dsl").glob("*.batch.json")):
-        document = json.loads(path.read_text(encoding="utf-8"))
-        changed = False
-        for record in document.get("questions", []):
-            question_id = str(record.get("id", ""))
+    for path, grouped in sorted(grouped_questions.items(), key=lambda item: str(item[0])):
+        if path.is_file():
+            document = json.loads(path.read_text(encoding="utf-8"))
+        else:
+            source_file = grouped[0]["file_name"]
+            document = {
+                "schema_version": "question_dsl.v1",
+                "source_ir": str(Path("artifacts/table_ir") / f"{Path(source_file).stem}.json"),
+                "source_file": source_file,
+                "generated_at": utc_now(),
+                "complete": False,
+                "questions": [],
+            }
+        records = {
+            str(record.get("id")): record
+            for record in document.get("questions", [])
+            if isinstance(record, dict) and record.get("id")
+        }
+        for question in grouped:
+            question_id = question["id"]
             candidate = repairs.get(question_id)
-            question = question_by_id.get(question_id)
-            if candidate is None or question is None:
-                continue
             dsl = normalize_dsl(candidate, question)
-            record.clear()
-            record.update({
+            records[question_id] = {
                 "id": question_id,
                 "question": question["question"],
                 "question_type": question["question_type"],
@@ -144,11 +192,14 @@ def main() -> int:
                 "model": "local-deterministic-repair",
                 "usage": None,
                 "raw": "",
-            })
+            }
             repaired += 1
-            changed = True
-        if changed:
-            write_json(path, document)
+        document["questions"] = [
+            records[key]
+            for key in sorted(records, key=lambda value: (0, int(value)) if value.isdigit() else (1, value))
+        ]
+        document["generated_at"] = utc_now()
+        write_json(path, document)
     print(f"repaired={repaired}")
     return 0
 

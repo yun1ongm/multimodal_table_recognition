@@ -403,6 +403,14 @@ python3 scripts/repair_cached_dsl.py
 python3 scripts/run_batch_pipeline.py --stage answer --force --continue-on-errors
 ```
 
+对于视觉接口不可用、但本地页面可复核的题目，可运行离线补答脚本；它会合并已有答案并保留答案审计来源：
+
+```bash
+python3 scripts/repair_remaining_answers.py
+python3 scripts/run_batch_pipeline.py --stage export --continue-on-errors
+python3 scripts/validate_submission.py submission.xlsx --tests tests.xlsx
+```
+
 只处理单个文件进行回归：
 
 ```bash
