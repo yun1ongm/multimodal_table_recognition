@@ -67,6 +67,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Merge selected repaired DSL records into an existing group cache",
     )
+    parser.add_argument(
+        "--single-only",
+        action="store_true",
+        help="Compile selected DSL repairs one question per request",
+    )
     parser.add_argument("--allow-blank", action="store_true")
     parser.add_argument(
         "--continue-on-errors",
@@ -221,6 +226,8 @@ def compile_command(args: argparse.Namespace, group: TableGroup, ir_path: Path, 
         command.append("--continue-on-errors")
     if args.merge_existing:
         command.append("--merge-existing")
+    if args.single_only:
+        command.append("--single-only")
     return command
 
 

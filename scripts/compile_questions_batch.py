@@ -39,6 +39,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Merge selected repaired questions into an existing output document",
     )
+    parser.add_argument(
+        "--single-only",
+        action="store_true",
+        help="Compile each selected question directly without a batch request",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -241,6 +246,44 @@ def main() -> int:
     fallback_errors = 0
     for index, chunk in enumerate(chunks, start=1):
         print(f"batch {index}/{len(chunks)} ids={[question['id'] for question in chunk]}")
+        if args.single_only:
+            for question in chunk:
+                try:
+                    records.append(
+                        compile_single(
+                            client,
+                            question,
+                            ir,
+                            model=args.model,
+                            max_tokens=args.max_tokens,
+                            schema_retries=args.schema_retries,
+                        )
+                    )
+                    print(f"question {question['id']}: single-only compiled")
+                except Exception as single_error:
+                    fallback_errors += 1
+                    records.append(
+                        {
+                            "id": question["id"],
+                            "question": question["question"],
+                            "question_type": question["question_type"],
+                            "answer_format": question["answer_format"],
+                            "error": str(single_error),
+                        }
+                    )
+                    print(f"question {question['id']}: ERROR {single_error}")
+            write_json(
+                partial_path,
+                {
+                    "schema_version": "question_dsl.v1",
+                    "source_ir": str(args.ir),
+                    "source_file": ir.get("source_file"),
+                    "generated_at": utc_now(),
+                    "complete": False,
+                    "questions": records,
+                },
+            )
+            continue
         try:
             records.extend(
                 compile_batch(
