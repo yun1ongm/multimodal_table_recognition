@@ -155,7 +155,7 @@
 
 ### 4.4 千问多模态调用策略
 
-使用阿里云百炼/PAI 上可用的千问视觉模型完成页面理解和表格候选结构识别。本次批处理配置为 `qwen3.8-flash` 主模型、`qwen3.8-max-0902` fallback；建议采用三轮提示，而不是一次让模型直接给最终答案：
+使用阿里云百炼/PAI 上可用的千问视觉模型完成页面理解和表格候选结构识别。本次批处理配置为 `qwen3.8-2.4t-a95b` 主模型、`qwen3.8-max` fallback；建议采用三轮提示，而不是一次让模型直接给最终答案：
 
 1. **定位轮**：只返回目标表所在页、表格边界、表题和候选表头；
 2. **结构轮**：要求严格输出 TableIR JSON，禁止 Markdown，要求每个真实单元格只出现一次；
@@ -390,10 +390,17 @@ python3 scripts/run_batch_pipeline.py \
 如需显式指定本次使用的模型和请求超时，可在命令前设置环境变量（不要把 API key 写入脚本或提交记录）：
 
 ```bash
-QWEN_MODEL=qwen3.8-flash \
-QWEN_MODEL_FALLBACK=qwen3.8-max-0902 \
-QWEN_TIMEOUT_SECONDS=75 \
+QWEN_MODEL=qwen3.8-2.4t-a95b \
+QWEN_MODEL_FALLBACK=qwen3.8-max \
+QWEN_TIMEOUT_SECONDS=45 \
 python3 scripts/run_batch_pipeline.py --stage all --continue-on-errors
+```
+
+当视觉模型暂时超时或配额不足时，可先对已有 `TableIR` 的缓存题目执行确定性 DSL 修复，再由同一答案引擎重放，避免重复消耗 API token：
+
+```bash
+python3 scripts/repair_cached_dsl.py
+python3 scripts/run_batch_pipeline.py --stage answer --force --continue-on-errors
 ```
 
 只处理单个文件进行回归：

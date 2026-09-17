@@ -170,6 +170,30 @@ class TableView:
             column_label=labels[-1] if labels else self.column_label(int(cell.get("col", 0))),
         )
 
+    def selector_refs(self, selector: dict[str, Any]) -> list[CellRef]:
+        """Resolve a selector, including an optional explicit row list."""
+
+        if not isinstance(selector, dict):
+            raise AnswerEngineError("cell selector must be an object")
+        rows = selector.get("rows", selector.get("row_indices"))
+        if not isinstance(rows, list):
+            return self.resolve_cells(selector)
+        base = dict(selector)
+        base.pop("rows", None)
+        base.pop("row_indices", None)
+        refs: list[CellRef] = []
+        seen: set[int] = set()
+        for row in rows:
+            row_selector = dict(base)
+            row_selector["row"] = int(row)
+            for ref in self.resolve_cells(row_selector):
+                marker = id(ref.cell)
+                if marker in seen:
+                    continue
+                seen.add(marker)
+                refs.append(ref)
+        return refs
+
     def _row_score(self, target: Any, row: int) -> int:
         return max((_score_match(target, text) for text in self.row_texts(row)), default=0)
 
@@ -180,8 +204,27 @@ class TableView:
                 start = int(cell.get("col", 0))
                 end = start + int(cell.get("colspan", 1))
                 return 100 if start <= target_col < end else 0
-        labels = self.cell_column_labels(cell)
-        return max((_score_match(target, label) for label in labels), default=0)
+        labels = []
+        for col in range(
+            int(cell.get("col", 0)),
+            int(cell.get("col", 0)) + int(cell.get("colspan", 1)),
+        ):
+            labels.extend(self.column_labels(col))
+        target_text = normalize_text(target)
+        exact_columns = {
+            col
+            for col in range(int(self.ir.get("col_count", 0)))
+            if any(normalize_text(label) == target_text for label in self.column_labels(col))
+        }
+        if exact_columns:
+            return 100 if any(
+                int(cell.get("col", 0)) <= col < int(cell.get("col", 0)) + int(cell.get("colspan", 1))
+                for col in exact_columns
+            ) else 0
+        direct_score = max((_score_match(target, label) for label in labels), default=0)
+        if direct_score:
+            return direct_score
+        return max((_score_match(target, label) for label in self.cell_column_labels(cell)), default=0)
 
     def _form_pair_bonus(self, target: Any, cell: dict[str, Any]) -> int:
         """Prefer the value paired with a matching label in form-like rows."""
@@ -339,6 +382,19 @@ class TableView:
             include = True
             if where.get("label") is not None:
                 include = self._row_score(where["label"], row) >= 72
+            row_label_filter = where.get("row_label")
+            if row_label_filter is not None:
+                if isinstance(row_label_filter, dict):
+                    if row_label_filter.get("not") is not None:
+                        include = include and self._row_score(row_label_filter["not"], row) < 72
+                    if row_label_filter.get("contains") is not None:
+                        include = include and normalize_text(row_label_filter["contains"]) in normalize_text(joined)
+                else:
+                    include = include and self._row_score(row_label_filter, row) >= 72
+                if isinstance(row_label_filter, dict) and row_label_filter.get("not") is not None:
+                    row_cells = self.rows.get(row, [])
+                    if row_cells and all(cell.get("role") == "header" for cell in row_cells):
+                        include = False
             if where.get("label_contains") is not None:
                 include = include and normalize_text(where["label_contains"]) in normalize_text(joined)
             if where.get("text_contains") is not None:
@@ -347,6 +403,31 @@ class TableView:
                 include = include and normalize_text(where["not_contains"]) not in normalize_text(joined)
             if where.get("row") is not None:
                 include = include and row == int(where["row"])
+            column_target = where.get("column", where.get("column_label"))
+            column_index = where.get("col", where.get("column_index"))
+            cell_value = where.get("value")
+            cell_text = where.get("text")
+            cell_contains = where.get("contains")
+            if column_target is not None or column_index is not None or cell_value is not None or cell_text is not None or cell_contains is not None:
+                matched = False
+                for cell in self.rows.get(row, []):
+                    if column_index is not None:
+                        start = int(cell.get("col", 0))
+                        end = start + int(cell.get("colspan", 1))
+                        if not (start <= int(column_index) < end):
+                            continue
+                    elif column_target is not None and self._column_score(column_target, cell) <= 0:
+                        continue
+                    text = str(cell.get("text", ""))
+                    if cell_value is not None and normalize_text(cell_value) != normalize_text(text):
+                        continue
+                    if cell_text is not None and normalize_text(cell_text) != normalize_text(text):
+                        continue
+                    if cell_contains is not None and normalize_text(cell_contains) not in normalize_text(text):
+                        continue
+                    matched = True
+                    break
+                include = include and matched
             if include:
                 result.append(row)
         return result
@@ -457,6 +538,26 @@ class AnswerEngine:
             self.sources.append(ref.as_source())
             return self._cell_return(ref, node.get("return", "raw"))
         if operation == "text":
+            if "source" in node:
+                source_text = self._as_text(self.evaluate(node["source"]))
+                pattern = node.get("pattern")
+                if pattern:
+                    match = re.search(str(pattern), source_text)
+                    if match is None:
+                        raise AnswerEngineError(
+                            f"text pattern did not match source: {pattern!r}"
+                        )
+                    try:
+                        source_text = match.group(int(node.get("group", 0)))
+                    except (IndexError, ValueError) as exc:
+                        raise AnswerEngineError("text pattern group is invalid") from exc
+                if node.get("cast") in {"number", "numeric"}:
+                    return self._to_decimal(source_text)
+                return source_text
+            if "value" in node and not any(
+                key in node for key in ("row", "col", "row_label", "row_text", "column", "column_label", "text", "contains")
+            ):
+                return node.get("value")
             selector = dict(node)
             selector.pop("op", None)
             if "text" not in selector and "contains" not in selector and "value" in selector:
@@ -537,11 +638,27 @@ class AnswerEngine:
         if operation == "compare":
             return self._compare(node)
         if operation == "contains":
-            value = self.evaluate(node.get("value"))
-            needle = str(self.evaluate(node.get("needle", node.get("contains", ""))))
+            source = node.get("value", node.get("cell"))
+            needle_node = node.get("needle", node.get("text", node.get("contains", "")))
+            value = self.evaluate(source)
+            needle = str(self.evaluate(needle_node))
+            if not needle:
+                return False
             return normalize_text(needle) in normalize_text(self._as_text(value))
         if operation == "structure":
-            return self.view.structure(node)
+            structure = self.view.structure(node)
+            property_name = str(node.get("property", ""))
+            property_aliases = {
+                "rows": "row_count",
+                "columns": "col_count",
+                "cols": "col_count",
+            }
+            property_name = property_aliases.get(property_name, property_name)
+            if property_name:
+                if property_name in structure:
+                    return structure[property_name]
+                raise AnswerEngineError(f"unsupported structure property: {property_name}")
+            return structure
         raise AnswerEngineError(f"unsupported expression operation: {operation}")
 
     def _cell_return(self, ref: CellRef, mode: str) -> Any:
@@ -562,7 +679,12 @@ class AnswerEngine:
     def _table_field(self, field: str) -> Any:
         ir = self.view.ir
         if field in {"title", "unit", "row_count", "col_count"}:
-            return ir.get(field)
+            value = ir.get(field)
+            if field == "title" and not value:
+                return ""
+            return value
+        if field in {"language_profile", "language_combination", "语言", "语言组合"}:
+            field = "language"
         header_cells = [cell for cell in self.view.cells if cell.get("role") == "header" and cell.get("text", "")]
         if field in {"leftmost_header", "first_header"}:
             if not header_cells:
@@ -587,7 +709,31 @@ class AnswerEngine:
             return ""
         if field in {"visible_rows", "rows"}:
             return len(self.view.rows)
+        if field in {"orientation", "direction", "表格方向"}:
+            return "横向" if int(ir.get("col_count", 0)) > int(ir.get("row_count", 0)) else "纵向"
+        for cell in self.view.cells:
+            text = str(cell.get("text", ""))
+            if field not in text:
+                continue
+            match = re.search(
+                rf"{re.escape(field)}\s*[:：]?\s*([^/，,;；\n]+)",
+                text,
+            )
+            if match:
+                return match.group(1).strip()
         raise AnswerEngineError(f"unsupported table field: {field}")
+
+    def _numeric_selector_refs(self, selector: dict[str, Any]) -> list[CellRef]:
+        refs = self.view.selector_refs(selector)
+        numeric_refs: list[CellRef] = []
+        for ref in refs:
+            try:
+                self._to_decimal(ref)
+            except AnswerEngineError:
+                continue
+            numeric_refs.append(ref)
+        self.sources.extend(ref.as_source() for ref in numeric_refs)
+        return numeric_refs
 
     def _arithmetic(self, operation: str, node: dict[str, Any]) -> Decimal:
         if operation in {"subtract", "difference", "divide", "ratio"}:
@@ -598,6 +744,8 @@ class AnswerEngine:
                 operands = [node["left"], node["right"]]
             if operands is None and "value" in node:
                 operands = [node["value"]]
+            if operands is None and isinstance(node.get("selector"), dict):
+                operands = self._numeric_selector_refs(node["selector"])
         if not isinstance(operands, list) or not operands:
             raise AnswerEngineError(f"{operation} requires operands")
         numbers = [self._to_decimal(self.evaluate(operand)) for operand in operands]
@@ -633,19 +781,44 @@ class AnswerEngine:
         if operation == "count_rows":
             return len(self.view.matching_rows(node.get("where", node.get("selector"))))
         if operation == "count_cells":
-            selector = node.get("selector", node.get("where", {}))
-            refs = self.view.resolve_cells(selector)
+            selector = dict(node.get("selector", node.get("where", {})))
+            if "text" not in selector and "contains" not in selector and "value" in selector:
+                selector["text"] = selector["value"]
+            refs = self.view.selector_refs(selector)
             self.sources.extend(ref.as_source() for ref in refs)
             return len(refs)
         items = node.get("items", node.get("values"))
         if isinstance(items, list):
             return len(items)
+        selector = node.get("selector")
+        if isinstance(selector, dict):
+            selector_type = str(selector.get("type", "")).lower()
+            if selector_type in {"column", "columns"}:
+                return int(self.view.ir.get("col_count", 0))
+            if selector_type in {"row", "rows"}:
+                return int(self.view.ir.get("row_count", 0))
+            refs = self.view.selector_refs(selector)
+            self.sources.extend(ref.as_source() for ref in refs)
+            return len(refs)
         if node.get("where") is not None:
             return len(self.view.matching_rows(node["where"]))
         raise AnswerEngineError("count requires items, values or where")
 
     def _arg_extreme(self, operation: str, node: dict[str, Any]) -> Any:
         items = node.get("items", node.get("operands", node.get("values")))
+        if not isinstance(items, list) and isinstance(node.get("selector"), dict):
+            refs = self._numeric_selector_refs(node["selector"])
+            if not refs:
+                raise AnswerEngineError(f"{operation} selector has no numeric cells")
+            chosen = (max if operation == "argmax" else min)(
+                refs, key=lambda ref: self._to_decimal(ref)
+            )
+            return_mode = str(node.get("return", "value"))
+            if return_mode in {"row", "row_label"}:
+                return chosen.row_label
+            if return_mode in {"value", "raw", "text"}:
+                return chosen.text
+            return chosen
         if not isinstance(items, list) or not items:
             raise AnswerEngineError(f"{operation} requires a non-empty items array")
         evaluated = [self.evaluate(item) for item in items]
@@ -707,6 +880,9 @@ class AnswerEngine:
             time_value = self._time_to_minutes(value.text)
             if time_value is not None:
                 return time_value
+            comma_decimal = self._comma_decimal(value.text)
+            if comma_decimal is not None:
+                return comma_decimal
             financial = value.cell.get("financial_value")
             if isinstance(financial, dict) and financial.get("raw_value") is not None:
                 try:
@@ -720,15 +896,49 @@ class AnswerEngine:
             )
             if parsed.raw_value is not None:
                 return Decimal(parsed.raw_value)
+            leading = self._leading_composite_number(value.text)
+            if leading is not None:
+                return leading
             raise AnswerEngineError(f"cell is not numeric: {value.text!r}")
         if isinstance(value, str):
             time_value = self._time_to_minutes(value)
             if time_value is not None:
                 return time_value
+            comma_decimal = self._comma_decimal(value)
+            if comma_decimal is not None:
+                return comma_decimal
             parsed = parse_financial_value(value, unit_context=None)
             if parsed.raw_value is not None:
                 return Decimal(parsed.raw_value)
+            leading = self._leading_composite_number(value)
+            if leading is not None:
+                return leading
         raise AnswerEngineError(f"value is not numeric: {value!r}")
+
+    @staticmethod
+    def _leading_composite_number(value: Any) -> Decimal | None:
+        """Read the leading count from compact ``n (percent)`` cells."""
+
+        match = re.match(
+            r"^\s*[$€£¥]?\s*([+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*\(",
+            str(value),
+        )
+        if match is None:
+            return None
+        try:
+            return Decimal(match.group(1).replace(",", ""))
+        except InvalidOperation:
+            return None
+
+    @staticmethod
+    def _comma_decimal(value: Any) -> Decimal | None:
+        text = str(value)
+        if not re.fullmatch(r"\s*[+-]?\d+,\d{1,2}\s*%?\s*", text):
+            return None
+        try:
+            return Decimal(text.strip().rstrip("%").replace(",", "."))
+        except InvalidOperation:
+            return None
 
     @staticmethod
     def _time_to_minutes(value: str) -> Decimal | None:
@@ -749,6 +959,8 @@ class AnswerEngine:
 
     @staticmethod
     def _as_text(value: Any) -> str:
+        if value is None:
+            return ""
         if isinstance(value, CellRef):
             return value.text
         if isinstance(value, Decimal):
@@ -759,7 +971,10 @@ class AnswerEngine:
 
     def format_answer(self, value: Any, answer_format: str, dsl: dict[str, Any]) -> str:
         if answer_format == "number":
-            return decimal_to_string(self._to_decimal(value))
+            try:
+                return decimal_to_string(self._to_decimal(value))
+            except AnswerEngineError:
+                return ""
         if answer_format == "string":
             return self._as_text(value)
         if answer_format == "json_array":
@@ -770,16 +985,22 @@ class AnswerEngine:
             serialized = [self._format_json_item(item, item_format) for item in values]
             return json.dumps(serialized, ensure_ascii=False, separators=(",", ":"))
         if answer_format == "json":
+            if value is None:
+                return ""
             if isinstance(value, dict):
                 return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
             return json.dumps(self._format_json_item(value, dsl.get("item_format")), ensure_ascii=False)
         raise AnswerEngineError(f"unsupported answer format: {answer_format}")
 
     def _format_json_item(self, value: Any, item_format: str | None) -> Any:
+        if value is None:
+            return ""
         if isinstance(value, CellRef):
             if not value.text:
                 return ""
             if item_format == "number":
+                if re.search(r"\([^()]+\)", value.text):
+                    return value.text
                 try:
                     return self._decimal_json(self._to_decimal(value))
                 except AnswerEngineError:
@@ -795,6 +1016,13 @@ class AnswerEngine:
             return self._decimal_json(value)
         if isinstance(value, list):
             return [self._format_json_item(item, item_format) for item in value]
+        if item_format == "number" and isinstance(value, str):
+            if re.search(r"\([^()]+\)", value):
+                return value
+            try:
+                return self._decimal_json(self._to_decimal(value))
+            except AnswerEngineError:
+                return ""
         return value
 
     @staticmethod

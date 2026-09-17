@@ -136,7 +136,12 @@ def parse_financial_value(
     cleaned = raw.replace("\u00a0", " ").replace("−", "-").replace("－", "-")
     if negative_by_parentheses:
         cleaned = cleaned.strip()[1:-1]
-    tokens = _NUMBER_TOKEN.findall(cleaned.replace(",", ""))
+    token_text = cleaned
+    if re.fullmatch(r"\s*[+-]?\d+,\d{1,2}\s*%?\s*", token_text):
+        token_text = token_text.replace(",", ".")
+    else:
+        token_text = token_text.replace(",", "")
+    tokens = _NUMBER_TOKEN.findall(token_text)
     if len(tokens) != 1:
         return FinancialValue(raw_text=raw, kind="unparsed", reason=f"expected_one_number_got_{len(tokens)}")
 

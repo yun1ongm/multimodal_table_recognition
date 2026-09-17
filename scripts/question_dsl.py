@@ -87,6 +87,14 @@ def _copy_and_normalize_node(node: Any, path: str = "expression") -> dict[str, A
     if not isinstance(node, dict):
         raise DSLValidationError(f"{path} must be an object")
     normalized = deepcopy(node)
+    if "notes" in normalized:
+        child_notes = normalized.get("notes")
+        if child_notes is None:
+            normalized["notes"] = []
+        elif isinstance(child_notes, str):
+            normalized["notes"] = [child_notes]
+        elif not isinstance(child_notes, list):
+            raise DSLValidationError(f"{path}.notes must be an array")
     operation = _canonical_node_operation(normalized.get("op"))
     if operation not in NODE_OPERATIONS:
         raise DSLValidationError(f"{path}.op has unsupported value {operation!r}")
@@ -107,7 +115,7 @@ def _copy_and_normalize_node(node: Any, path: str = "expression") -> dict[str, A
     for key in ("operands", "items", "values"):
         if key in normalized:
             if not isinstance(normalized[key], list):
-                raise DSLValidationError(f"{path}.{key} must be an array")
+                normalized[key] = [normalized[key]]
             normalized[key] = [
                 _copy_and_normalize_node(item, f"{path}.{key}[{index}]")
                 if isinstance(item, dict) and "op" in item
