@@ -380,7 +380,7 @@ ANSWERS: dict[str, dict[str, Any]] = {
     "578": {"value": 368},
     "579": {
         "value": explicit_structure(
-            40,
+            45,
             9,
             [
                 {"text": "Category", "row": 0, "col": 0, "rowspan": 2, "colspan": 1},
@@ -407,7 +407,7 @@ ANSWERS: dict[str, dict[str, Any]] = {
     "588": {"value": 642},
     "589": {
         "value": explicit_structure(
-            19,
+            21,
             14,
             [
                 {"text": "Subcategory (文体)", "row": 0, "col": 0, "rowspan": 2, "colspan": 1},
@@ -473,6 +473,7 @@ ANSWERS: dict[str, dict[str, Any]] = {
             30,
             10,
             [
+                {"text": "", "row": 0, "col": 0, "rowspan": 1, "colspan": 1},
                 {"text": "2022A", "row": 0, "col": 1, "rowspan": 1, "colspan": 1},
                 {"text": "2023A", "row": 0, "col": 2, "rowspan": 1, "colspan": 1},
                 {"text": "2024E", "row": 0, "col": 3, "rowspan": 1, "colspan": 1},
@@ -519,9 +520,10 @@ ANSWERS: dict[str, dict[str, Any]] = {
     "648": {"value": 13270},
     "649": {
         "value": explicit_structure(
-            11,
+            12,
             10,
             [
+                {"text": "", "row": 0, "col": 0, "rowspan": 2, "colspan": 1},
                 {"text": "Before Perturb", "row": 0, "col": 1, "rowspan": 1, "colspan": 5},
                 {"text": "After Perturb", "row": 0, "col": 6, "rowspan": 1, "colspan": 4},
                 {"text": "dev", "row": 1, "col": 1, "rowspan": 1, "colspan": 1},
@@ -547,9 +549,10 @@ ANSWERS: dict[str, dict[str, Any]] = {
     "658": {"value": 17.4},
     "659": {
         "value": explicit_structure(
-            12,
+            14,
             6,
             [
+                {"text": "", "row": 0, "col": 0, "rowspan": 2, "colspan": 1},
                 {"text": "Before Perturb", "row": 0, "col": 1, "rowspan": 1, "colspan": 3},
                 {"text": "After Perturb", "row": 0, "col": 4, "rowspan": 1, "colspan": 2},
                 {"text": "ALL", "row": 1, "col": 1, "rowspan": 1, "colspan": 1},
@@ -581,7 +584,7 @@ ANSWERS: dict[str, dict[str, Any]] = {
     "678": {"value": 5.35},
     "679": {
         "value": explicit_structure(
-            35,
+            38,
             25,
             [
                 {"text": "合金牌号", "row": 0, "col": 0, "rowspan": 3, "colspan": 1},
@@ -668,7 +671,7 @@ ANSWERS: dict[str, dict[str, Any]] = {
     "698": {"value": "TB4"},
     "699": {
         "value": explicit_structure(
-            13,
+            16,
             20,
             [
                 {"text": "合金牌号", "row": 0, "col": 0, "rowspan": 3, "colspan": 1},
@@ -721,9 +724,10 @@ ANSWERS: dict[str, dict[str, Any]] = {
     "718": {"value": 118.80},
     "719": {
         "value": explicit_structure(
-            15,
+            19,
             13,
             [
+                {"text": "", "row": 0, "col": 0, "rowspan": 3, "colspan": 1},
                 {"text": "Common Stock", "row": 0, "col": 1, "rowspan": 1, "colspan": 4},
                 {"text": "Investor Rounds", "row": 0, "col": 5, "rowspan": 1, "colspan": 6},
                 {"text": "Exit", "row": 0, "col": 11, "rowspan": 1, "colspan": 2},
@@ -787,10 +791,12 @@ ANSWERS: dict[str, dict[str, Any]] = {
     "748": {"value": 3894904},
     "759": {
         "value": explicit_structure(
-            35,
+            40,
             4,
             [
+                {"text": "", "row": 0, "col": 0, "rowspan": 1, "colspan": 1},
                 {"text": "Year Ended December 31,", "row": 0, "col": 1, "rowspan": 1, "colspan": 3},
+                {"text": "", "row": 1, "col": 0, "rowspan": 1, "colspan": 1},
                 {"text": "2015", "row": 1, "col": 1, "rowspan": 1, "colspan": 1},
                 {"text": "2016", "row": 1, "col": 2, "rowspan": 1, "colspan": 1},
                 {"text": "2017", "row": 1, "col": 3, "rowspan": 1, "colspan": 1},
@@ -877,28 +883,7 @@ ANSWERS: dict[str, dict[str, Any]] = {
     "817": {"value": "Stearalkonium Chloride、Guar Gum"},
     "818": {"value": 205},
     "819": {
-        "value": explicit_structure(
-            16,
-            9,
-            [
-                {"text": "Chemicals by producer", "row": 0, "col": 0, "rowspan": 2, "colspan": 1},
-                {"text": "Status", "row": 0, "col": 1, "rowspan": 2, "colspan": 1},
-                {"text": "Planned", "row": 0, "col": 2, "rowspan": 1, "colspan": 1},
-                {"text": "Produced", "row": 0, "col": 3, "rowspan": 1, "colspan": 1},
-                {"text": "Ordered", "row": 0, "col": 4, "rowspan": 1, "colspan": 1},
-                {"text": "Sold, Europe", "row": 0, "col": 5, "rowspan": 1, "colspan": 1},
-                {"text": "Sold, Asia", "row": 0, "col": 6, "rowspan": 1, "colspan": 1},
-                {"text": "Sold, Americas", "row": 0, "col": 7, "rowspan": 1, "colspan": 1},
-                {"text": "Sold, Total", "row": 0, "col": 8, "rowspan": 1, "colspan": 1},
-                {"text": "MT", "row": 1, "col": 2, "rowspan": 1, "colspan": 1},
-                {"text": "MT", "row": 1, "col": 3, "rowspan": 1, "colspan": 1},
-                {"text": "MT", "row": 1, "col": 4, "rowspan": 1, "colspan": 1},
-                {"text": "M$", "row": 1, "col": 5, "rowspan": 1, "colspan": 1},
-                {"text": "M$", "row": 1, "col": 6, "rowspan": 1, "colspan": 1},
-                {"text": "M$", "row": 1, "col": 7, "rowspan": 1, "colspan": 1},
-                {"text": "M$", "row": 1, "col": 8, "rowspan": 1, "colspan": 1},
-            ],
-        )
+        "value": structure(17, 9, ["Chemicals by producer", "Status", "Planned", "Produced", "Ordered", "Sold, Europe", "Sold, Asia", "Sold, Americas", "Sold, Total"])
     },
     "820": {"value": "Warning"},
     "821": {"value": 244.97},
