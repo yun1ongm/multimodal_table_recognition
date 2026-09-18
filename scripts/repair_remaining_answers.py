@@ -387,12 +387,12 @@ ANSWERS: dict[str, dict[str, Any]] = {
                 {"text": "Subcategory", "row": 0, "col": 1, "rowspan": 2, "colspan": 1},
                 {"text": "#", "row": 0, "col": 2, "rowspan": 2, "colspan": 1},
                 {"text": "Internal Evaluation (内部综合评估)", "row": 0, "col": 3, "rowspan": 1, "colspan": 6},
-                {"text": "V4 win", "row": 1, "col": 3, "rowspan": 1, "colspan": 1},
-                {"text": "V3.2 win", "row": 1, "col": 4, "rowspan": 1, "colspan": 1},
-                {"text": "tie", "row": 1, "col": 5, "rowspan": 1, "colspan": 1},
-                {"text": "V4%", "row": 1, "col": 6, "rowspan": 1, "colspan": 1},
-                {"text": "V3.2%", "row": 1, "col": 7, "rowspan": 1, "colspan": 1},
-                {"text": "tie%", "row": 1, "col": 8, "rowspan": 1, "colspan": 1},
+                {"text": "DS win", "row": 1, "col": 3, "rowspan": 1, "colspan": 1},
+                {"text": "Gem win", "row": 1, "col": 4, "rowspan": 1, "colspan": 1},
+                {"text": "Tie", "row": 1, "col": 5, "rowspan": 1, "colspan": 1},
+                {"text": "DS%", "row": 1, "col": 6, "rowspan": 1, "colspan": 1},
+                {"text": "Gem%", "row": 1, "col": 7, "rowspan": 1, "colspan": 1},
+                {"text": "Tie%", "row": 1, "col": 8, "rowspan": 1, "colspan": 1},
             ],
         )
     },
@@ -468,7 +468,23 @@ ANSWERS: dict[str, dict[str, Any]] = {
     "626": {"value": 3580},
     "627": {"value": 8163},
     "628": {"value": "2023"},
-    "629": {"value": structure(5, 4, ["项目", "2024E", "2025E", "2026E"])},
+    "629": {
+        "value": explicit_structure(
+            30,
+            10,
+            [
+                {"text": "2022A", "row": 0, "col": 1, "rowspan": 1, "colspan": 1},
+                {"text": "2023A", "row": 0, "col": 2, "rowspan": 1, "colspan": 1},
+                {"text": "2024E", "row": 0, "col": 3, "rowspan": 1, "colspan": 1},
+                {"text": "2025E", "row": 0, "col": 4, "rowspan": 1, "colspan": 1},
+                {"text": "2026E", "row": 0, "col": 5, "rowspan": 1, "colspan": 1},
+                {"text": "2023H1", "row": 0, "col": 6, "rowspan": 1, "colspan": 1},
+                {"text": "2023H2", "row": 0, "col": 7, "rowspan": 1, "colspan": 1},
+                {"text": "2024H1", "row": 0, "col": 8, "rowspan": 1, "colspan": 1},
+                {"text": "2024H2", "row": 0, "col": 9, "rowspan": 1, "colspan": 1},
+            ],
+        )
+    },
     "630": {"value": [210.2, 227.8, 246.0]},
     "631": {"value": [220.2, 247.7, 275.3]},
     "632": {"value": ["44.4%", "44.6%", "44.6%"]},
@@ -478,7 +494,20 @@ ANSWERS: dict[str, dict[str, Any]] = {
     "636": {"value": 29.3},
     "637": {"value": 1.1},
     "638": {"value": 81.6},
-    "639": {"value": structure(1, 6, ["资产负债表", "利润表", "现金流量表", "关键财务与估值指标", "2022", "2023"])},
+    "639": {
+        "value": explicit_structure(
+            16,
+            6,
+            [
+                {"text": "关键财务与估值指标", "row": 0, "col": 0, "rowspan": 1, "colspan": 1},
+                {"text": "2022", "row": 0, "col": 1, "rowspan": 1, "colspan": 1},
+                {"text": "2023", "row": 0, "col": 2, "rowspan": 1, "colspan": 1},
+                {"text": "2024E", "row": 0, "col": 3, "rowspan": 1, "colspan": 1},
+                {"text": "2025E", "row": 0, "col": 4, "rowspan": 1, "colspan": 1},
+                {"text": "2026E", "row": 0, "col": 5, "rowspan": 1, "colspan": 1},
+            ],
+        )
+    },
     "640": {"value": 39270},
     "641": {"value": 21021},
     "642": {"value": 4897},
@@ -726,7 +755,17 @@ ANSWERS: dict[str, dict[str, Any]] = {
     "726": {"value": 1000000},
     "727": {"value": 9000000},
     "728": {"value": 20000000},
-    "729": {"value": structure(28, 2, ["Income Statement", "Year 1"])},
+    "729": {
+        "value": explicit_structure(
+            28,
+            2,
+            [
+                {"text": "Income Statement:", "row": 0, "col": 0, "rowspan": 1, "colspan": 2},
+                {"text": "Revenue:", "row": 1, "col": 0, "rowspan": 1, "colspan": 1},
+                {"text": "Year 1", "row": 1, "col": 1, "rowspan": 1, "colspan": 1},
+            ],
+        )
+    },
     "730": {"value": 900},
     "731": {"value": 100},
     "732": {"value": 1000},
