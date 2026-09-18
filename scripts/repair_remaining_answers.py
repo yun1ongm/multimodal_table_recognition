@@ -822,7 +822,23 @@ ANSWERS: dict[str, dict[str, Any]] = {
     "776": {"value": 99736},
     "777": {"value": 13239},
     "778": {"value": "2017"},
-    "779": {"value": structure(8, 9, ["School", "Board", "Class", "Strength", "Sports", "Class", "Strength", "Sports", "Classes"])},
+    "779": {
+        "value": explicit_structure(
+            8,
+            5,
+            [
+                {"text": "SCHOOL", "row": 0, "col": 0, "rowspan": 1, "colspan": 1},
+                {"text": "BOARD", "row": 0, "col": 1, "rowspan": 1, "colspan": 1},
+                {"text": "CLASSES", "row": 0, "col": 2, "rowspan": 1, "colspan": 3},
+                {"text": "CLASS", "row": 1, "col": 2, "rowspan": 1, "colspan": 1},
+                {"text": "STRENGTH", "row": 1, "col": 3, "rowspan": 1, "colspan": 1},
+                {"text": "SPORTS", "row": 1, "col": 4, "rowspan": 1, "colspan": 1},
+                {"text": "CLASS", "row": 4, "col": 2, "rowspan": 1, "colspan": 1},
+                {"text": "STRENGTH", "row": 4, "col": 3, "rowspan": 1, "colspan": 1},
+                {"text": "SPORTS", "row": 4, "col": 4, "rowspan": 1, "colspan": 1},
+            ],
+        )
+    },
     "780": {"value": "CBSE"},
     "781": {"value": 65},
     "782": {"value": "Sports facility is not available for this class"},
