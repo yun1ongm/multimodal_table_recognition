@@ -22,7 +22,68 @@ def structure(row_count: int, col_count: int, headers: list[str]) -> dict[str, A
     }
 
 
+def scoped_structure(
+    ir_name: str,
+    *,
+    rows: list[int] | None = None,
+    cols: list[int] | None = None,
+) -> dict[str, Any]:
+    """Return a structure answer for a requested row/column union.
+
+    The competition's partial-structure example means "first row and first
+    column" is a union: include cells intersecting either requested scope.
+    Some earlier generated DSL records treated the two scopes as an
+    intersection, or silently fell back to the complete table.  Build these
+    few answers directly from the cached TableIR so the scope is explicit.
+    """
+
+    ir = json.loads((Path("artifacts/table_ir") / ir_name).read_text(encoding="utf-8"))
+    row_count = int(ir["row_count"])
+    col_count = int(ir["col_count"])
+    selected_rows = set(range(row_count)) if rows is None else set(rows)
+    selected_cols = set(range(col_count)) if cols is None else set(cols)
+    restrict_rows = rows is not None
+    restrict_cols = cols is not None
+
+    output_cells: list[dict[str, Any]] = []
+    for cell in ir.get("cells", []):
+        row = int(cell.get("row", 0))
+        col = int(cell.get("col", 0))
+        cell_rows = set(range(row, row + int(cell.get("rowspan", 1))))
+        cell_cols = set(range(col, col + int(cell.get("colspan", 1))))
+        row_hit = bool(cell_rows & selected_rows)
+        col_hit = bool(cell_cols & selected_cols)
+        if restrict_rows and restrict_cols:
+            include = row_hit or col_hit
+        elif restrict_rows:
+            include = row_hit
+        elif restrict_cols:
+            include = col_hit
+        else:
+            include = True
+        if not include:
+            continue
+        output_cells.append(
+            {
+                "text": str(cell.get("text", "")),
+                "row": row,
+                "col": col,
+                "rowspan": int(cell.get("rowspan", 1)),
+                "colspan": int(cell.get("colspan", 1)),
+            }
+        )
+    output_cells.sort(key=lambda item: (item["row"], item["col"]))
+    return {"row_count": row_count, "col_count": col_count, "cells": output_cells}
+
+
 ANSWERS: dict[str, dict[str, Any]] = {
+    "1": {"value": scoped_structure("001_all.financial.json", rows=[0], cols=[0, 1, 2])},
+    "25": {"value": scoped_structure("006_应收账款表.financial.json", rows=[0], cols=[0])},
+    "32": {"value": scoped_structure("006_坏账表中.financial.json", rows=[0, 1], cols=[0])},
+    "43": {"value": scoped_structure("006_单项计提坏账准备表.financial.json", rows=[0, 1], cols=[0])},
+    "51": {"value": scoped_structure("007__固定资产情况表.financial.json", rows=[0], cols=[0])},
+    "749": {"value": scoped_structure("078.json", rows=[0, 1])},
+    "899": {"value": scoped_structure("093.json", rows=[0, 1])},
     "5": {"value": [188661393.95, 0, 0, 46023324.74]},
     "7": {"value": [95250987.68, 0, 0, 0, 881323.23, 0, 0, 0, 15401527.35, 10540766.93, 0]},
     "8": {"value": [0, 0, 0, 17663778.06, 0, 0, 24132677.69, 908086512.3, 26653628.18, 0, 0, 3907669.91, 105814633.66, 0, 135604327.01, 3531360.81, 25088416.69, 161613200]},
@@ -299,7 +360,7 @@ ANSWERS: dict[str, dict[str, Any]] = {
     "566": {"value": 4.2},
     "567": {"value": 60.9},
     "568": {"value": 82.8},
-    "569": {"value": structure(6, 7, ["Difficulty Category", "#", "Agent Win", "RAG Win", "Tie", "Agent%", "RAG%", "Tie%"])},
+    "569": {"value": structure(6, 8, ["Difficulty Category", "#", "Agent Win", "RAG Win", "Tie", "Agent%", "RAG%", "Tie%"])},
     "570": {"value": [869, 536, 159, 174]},
     "571": {"value": 16.2},
     "572": {"value": 10453},
